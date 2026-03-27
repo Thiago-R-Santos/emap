@@ -3,3 +3,7 @@ rich>=13.7.0
 python-dotenv>=1.0.0
 asyncio-throttle>=1.0.2
 aiofiles>=23.2.1
+
+# Playwright — necessário para scrapers de sites com Cloudflare (Betano, Sportingbet, Superbet)
+# Após instalar: playwright install chromium
+playwright>=1.44.0

@@ -17,25 +17,41 @@ from collections import defaultdict
 import httpx
 
 from arbitrage.scrapers.base import BaseScraper
-from arbitrage.scrapers.pinnacle import PinnacleScraper
-from arbitrage.scrapers.betano import BetanoScraper
-from arbitrage.scrapers.onexbet import OneXBetScraper
-from arbitrage.scrapers.sportingbet import SportingbetScraper
-from arbitrage.scrapers.superbet import SuperbetScraper
-from arbitrage.scrapers.betsul import BetsulScraper
+from arbitrage.scrapers.pinnacle             import PinnacleScraper
+from arbitrage.scrapers.betano               import BetanoScraper
+from arbitrage.scrapers.onexbet              import OneXBetScraper
+from arbitrage.scrapers.sportingbet          import SportingbetScraper
+from arbitrage.scrapers.superbet             import SuperbetScraper
+from arbitrage.scrapers.betsul               import BetsulScraper
+from arbitrage.scrapers.playwright_betano    import PlaywrightBetanoScraper
+from arbitrage.scrapers.playwright_sportingbet import PlaywrightSportingbetScraper
+from arbitrage.scrapers.playwright_superbet  import PlaywrightSuperbetScraper
 from arbitrage.models import Event
 
 logger = logging.getLogger(__name__)
 
-# Todos os scrapers disponíveis
-ALL_SCRAPERS: list[BaseScraper] = [
+# Scrapers httpx (rápidos, sem browser — funcionam para Pinnacle, 1xBet, Betsul)
+_HTTP_SCRAPERS: list[BaseScraper] = [
     PinnacleScraper(),
-    BetanoScraper(),
+    BetanoScraper(),       # fallback httpx para Betano
     OneXBetScraper(),
-    SportingbetScraper(),
-    SuperbetScraper(),
+    SportingbetScraper(),  # fallback httpx para Sportingbet
+    SuperbetScraper(),     # fallback httpx para Superbet
     BetsulScraper(),
 ]
+
+# Scrapers Playwright (browser real — para sites com Cloudflare: Betano, Sportingbet, Superbet)
+_PLAYWRIGHT_SCRAPERS: list = [
+    PlaywrightBetanoScraper(),
+    PlaywrightSportingbetScraper(),
+    PlaywrightSuperbetScraper(),
+]
+
+# Por padrão usa httpx. Playwright é ativado com USE_PLAYWRIGHT=true no .env
+import os as _os
+_USE_PLAYWRIGHT = _os.getenv("USE_PLAYWRIGHT", "false").lower() == "true"
+
+ALL_SCRAPERS: list[BaseScraper] = _HTTP_SCRAPERS
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Normalização de nomes de times
@@ -211,8 +227,9 @@ class ScraperCoordinator:
     Scrapers que falham são ignorados silenciosamente (graceful degradation).
     """
 
-    def __init__(self, scrapers: list[BaseScraper] | None = None):
+    def __init__(self, scrapers: list[BaseScraper] | None = None, playwright_scrapers: list | None = None):
         self.scrapers = scrapers or ALL_SCRAPERS
+        self.playwright_scrapers = playwright_scrapers  # None = usa _PLAYWRIGHT_SCRAPERS
         self._success_count: dict[str, int] = {}
         self._fail_count: dict[str, int] = {}
 
@@ -225,28 +242,47 @@ class ScraperCoordinator:
         return -1  # ilimitado (sem cota de API)
 
     async def fetch_events(self) -> list[Event]:
-        """Roda todos os scrapers em paralelo e funde os resultados."""
+        """
+        Roda scrapers httpx em paralelo.
+        Se USE_PLAYWRIGHT=true, também roda os scrapers Playwright para
+        Betano, Sportingbet e Superbet (que têm Cloudflare).
+        """
+        all_events: list[Event] = []
+
+        # ── Scrapers httpx (paralelos) ────────────────────────────────────────
         async with httpx.AsyncClient(
             follow_redirects=True,
             timeout=20.0,
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
         ) as client:
-            tasks = [self._run_scraper(scraper, client) for scraper in self.scrapers]
+            tasks = [self._run_http_scraper(s, client) for s in self.scrapers]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        all_events: list[Event] = []
         for scraper, result in zip(self.scrapers, results):
             if isinstance(result, Exception):
                 self._fail_count[scraper.bookmaker_key] = self._fail_count.get(scraper.bookmaker_key, 0) + 1
-                logger.warning("Scraper %s falhou: %s", scraper.bookmaker_name, result)
+                logger.warning("Scraper httpx %s falhou: %s", scraper.bookmaker_name, result)
             elif isinstance(result, list):
                 self._success_count[scraper.bookmaker_key] = len(result)
                 all_events.extend(result)
-                logger.info("Scraper %s: %d eventos", scraper.bookmaker_name, len(result))
+                logger.info("Scraper httpx %s: %d eventos", scraper.bookmaker_name, len(result))
+
+        # ── Scrapers Playwright (opcionais, sequenciais por site) ─────────────
+        if _USE_PLAYWRIGHT:
+            pw_scrapers = self.playwright_scrapers or _PLAYWRIGHT_SCRAPERS
+            for s in pw_scrapers:
+                try:
+                    evs = await s.fetch_events()
+                    if evs:
+                        self._success_count[s.bookmaker_key + "_pw"] = len(evs)
+                        all_events.extend(evs)
+                        logger.info("Scraper PW %s: %d eventos", s.bookmaker_name, len(evs))
+                except Exception as e:
+                    logger.warning("Scraper PW %s falhou: %s", s.bookmaker_name, e)
 
         return _merge_events(all_events)
 
-    async def _run_scraper(self, scraper: BaseScraper, client: httpx.AsyncClient) -> list[Event]:
+    async def _run_http_scraper(self, scraper: BaseScraper, client: httpx.AsyncClient) -> list[Event]:
         try:
             return await scraper.fetch_events(client)
         except Exception as e:
