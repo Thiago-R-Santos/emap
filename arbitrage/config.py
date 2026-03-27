@@ -18,6 +18,14 @@ TOTAL_STAKE: float = float(os.getenv("TOTAL_STAKE", "1000"))
 USE_MOCK: bool = os.getenv("USE_MOCK", "false").lower() == "true"
 
 # ---------------------------------------------------------------------------
+# Alertas Telegram
+# ---------------------------------------------------------------------------
+TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID: str   = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_MIN_PROFIT: float = float(os.getenv("TELEGRAM_MIN_PROFIT", "1.0"))
+ALERT_COOLDOWN_MINUTES: int = int(os.getenv("ALERT_COOLDOWN_MINUTES", "5"))
+
+# ---------------------------------------------------------------------------
 # Esportes monitorados (regiões: br = casas brasileiras, eu = europeias)
 # ---------------------------------------------------------------------------
 SPORTS = [

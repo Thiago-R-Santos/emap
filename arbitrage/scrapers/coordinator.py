@@ -23,6 +23,7 @@ from arbitrage.scrapers.onexbet              import OneXBetScraper
 from arbitrage.scrapers.sportingbet          import SportingbetScraper
 from arbitrage.scrapers.superbet             import SuperbetScraper
 from arbitrage.scrapers.betsul               import BetsulScraper
+from arbitrage.scrapers.kto                  import KTOScraper
 from arbitrage.scrapers.playwright_betano    import PlaywrightBetanoScraper
 from arbitrage.scrapers.playwright_sportingbet import PlaywrightSportingbetScraper
 from arbitrage.scrapers.playwright_superbet  import PlaywrightSuperbetScraper
@@ -30,7 +31,7 @@ from arbitrage.models import Event
 
 logger = logging.getLogger(__name__)
 
-# Scrapers httpx (rápidos, sem browser — funcionam para Pinnacle, 1xBet, Betsul)
+# Scrapers httpx (rápidos, sem browser — funcionam para Pinnacle, 1xBet, Betsul, KTO)
 _HTTP_SCRAPERS: list[BaseScraper] = [
     PinnacleScraper(),
     BetanoScraper(),       # fallback httpx para Betano
@@ -38,6 +39,7 @@ _HTTP_SCRAPERS: list[BaseScraper] = [
     SportingbetScraper(),  # fallback httpx para Sportingbet
     SuperbetScraper(),     # fallback httpx para Superbet
     BetsulScraper(),
+    KTOScraper(),
 ]
 
 # Scrapers Playwright (browser real — para sites com Cloudflare: Betano, Sportingbet, Superbet)

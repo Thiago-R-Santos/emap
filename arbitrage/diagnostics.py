@@ -43,6 +43,7 @@ async def test_http_scrapers() -> list[dict]:
     from arbitrage.scrapers.sportingbet import SportingbetScraper
     from arbitrage.scrapers.superbet    import SuperbetScraper
     from arbitrage.scrapers.betsul      import BetsulScraper
+    from arbitrage.scrapers.kto         import KTOScraper
 
     scrapers = [
         PinnacleScraper(),
@@ -51,6 +52,7 @@ async def test_http_scrapers() -> list[dict]:
         SportingbetScraper(),
         SuperbetScraper(),
         BetsulScraper(),
+        KTOScraper(),
     ]
 
     results = []
@@ -165,6 +167,11 @@ async def test_playwright_scrapers() -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _FIX_HINTS: dict[str, str] = {
+    "KTO": (
+        "Verifique a URL base em scrapers/kto.py.\n"
+        "Teste: https://www.kto.com/api/sportsbook/events?sportId=1&competitionId=325\n"
+        "Se 404: F12 → Network → XHR no site da KTO e encontre o endpoint correto."
+    ),
     "Pinnacle": (
         "Verifique o X-Api-Key em scrapers/pinnacle.py.\n"
         "Teste manual: curl 'https://guest.api.arcadia.pinnacle.com/0.1/sports' "
@@ -260,8 +267,9 @@ def parse_args() -> argparse.Namespace:
     g = p.add_mutually_exclusive_group()
     g.add_argument("--http-only", action="store_true", help="Testa só scrapers httpx")
     g.add_argument("--pw-only",   action="store_true", help="Testa só scrapers Playwright")
-    p.add_argument("--fix",  action="store_true", help="Mostra sugestões de correção")
-    p.add_argument("--debug", action="store_true", help="Logs detalhados")
+    p.add_argument("--fix",            action="store_true", help="Mostra sugestões de correção")
+    p.add_argument("--debug",          action="store_true", help="Logs detalhados")
+    p.add_argument("--test-telegram",  action="store_true", help="Envia mensagem de teste via Telegram")
     return p.parse_args()
 
 
@@ -272,6 +280,25 @@ async def main() -> None:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.WARNING)
+
+    # ── Teste Telegram ────────────────────────────────────────────────────────
+    if args.test_telegram:
+        from arbitrage.alerts import send_telegram, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+            console.print(
+                "[bold red]Erro:[/] Configure TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env\n"
+                "Veja as instruções em .env.example"
+            )
+        else:
+            console.print("[dim]Enviando mensagem de teste ao Telegram...[/]")
+            ok = await send_telegram(
+                "✅ *Teste de conexão — Arbitrage Bot*\n\nO bot está configurado corretamente!"
+            )
+            if ok:
+                console.print("[bold green]✅ Telegram OK![/] Mensagem enviada com sucesso.")
+            else:
+                console.print("[bold red]❌ Falha ao enviar Telegram.[/] Verifique token e chat_id.")
+        return
 
     results: list[dict] = []
 

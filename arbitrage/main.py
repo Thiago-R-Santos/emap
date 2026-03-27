@@ -29,6 +29,7 @@ from arbitrage.collectors.mock import MockCollector
 from arbitrage.scrapers.coordinator import ScraperCoordinator
 from arbitrage.arbitrage import find_arbitrage
 from arbitrage.ui import dashboard
+from arbitrage.alerts import AlertTracker, alert_opportunities, log_opportunities
 
 console = Console()
 
@@ -98,6 +99,9 @@ async def run(args: argparse.Namespace) -> None:
     collector = _build_collector(args)
 
     requests_remaining = -1
+    telegram_min_profit = float(os.getenv("TELEGRAM_MIN_PROFIT", str(min_profit)))
+    cooldown = int(os.getenv("ALERT_COOLDOWN_MINUTES", "5"))
+    tracker = AlertTracker(cooldown_minutes=cooldown)
 
     async def fetch_and_detect():
         nonlocal requests_remaining
@@ -105,6 +109,14 @@ async def run(args: argparse.Namespace) -> None:
         opps   = find_arbitrage(events, total_stake=stake, min_profit_pct=min_profit)
         if hasattr(collector, "requests_remaining"):
             requests_remaining = collector.requests_remaining
+
+        # Salva histórico e dispara alertas Telegram para oportunidades novas
+        if opps:
+            log_opportunities(opps)
+            new_opps = tracker.filter_new(opps)
+            if new_opps:
+                await alert_opportunities(new_opps, min_profit_for_alert=telegram_min_profit)
+
         return events, opps
 
     # ── Modo --once ──────────────────────────────────────────────────────────
